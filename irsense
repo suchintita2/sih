@@ -1,0 +1,81 @@
+
+#define BLYNK_TEMPLATE_ID "TMPL31GwNPuCs"
+#define BLYNK_TEMPLATE_NAME "NodeMCU"
+#define BLYNK_AUTH_TOKEN "q75CuXZio-ODViDsEXFA3dkqlK7oS3wp"  // Replace with your Blynk token
+
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+
+
+// WiFi Credentials
+const char* ssid = "Suchintita";          // Replace with your WiFi SSID
+const char* password = "C24BGhosh";  // Replace with your WiFi password
+
+#define IR_SENSOR_PIN 14  // GPIO14 (D5) - IR sensor OUT
+#define BUZZER_PIN 12     // GPIO12 (D6) - Buzzer
+
+unsigned long eyeClosedTime = 0;
+bool eyesClosed = false;
+bool notificationSent = false;
+unsigned long lastBuzzerTime = 0; 
+
+void setup() {
+    Serial.begin(9600);
+
+    // Connect to WiFi
+    Serial.print("Connecting to WiFi...");
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected to WiFi");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
+    // Connect to Blynk
+    Blynk.begin(BLYNK_AUTH_TOKEN, ssid, password);
+
+    pinMode(IR_SENSOR_PIN, INPUT);
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
+void loop() {
+    Blynk.run();  // Keep Blynk running
+
+    int irSensorValue = digitalRead(IR_SENSOR_PIN); // Read IR sensor value
+
+    if (irSensorValue == LOW) { // Eyes closed (IR sensor detects no reflection)
+        if (!eyesClosed) {
+            eyesClosed = true;
+            eyeClosedTime = millis(); // Start timing
+        } else {
+            unsigned long elapsedTime = millis() - eyeClosedTime;
+
+            // If eyes closed for 3 sec, start buzzer at 5 sec intervals
+            if (elapsedTime >= 3000) {
+                if (millis() - lastBuzzerTime >= 5000) { // Beep every 5 sec
+                    digitalWrite(BUZZER_PIN, HIGH);
+                    delay(500);  // Buzzer ON for 0.5 sec
+                    digitalWrite(BUZZER_PIN, LOW);
+                    lastBuzzerTime = millis();  // Update buzzer time
+                    Serial.println("Buzzer Beeped (Eyes Closed for 3+ sec)");
+                }
+            }
+
+            // If eyes closed for 10 sec, send notification (only once)
+            if (elapsedTime >= 10000 && !notificationSent) {
+                Blynk.logEvent("alert");
+                notificationSent = true; // Prevent multiple notifications
+                Serial.println("Notification Sent: Eyes closed for 10 sec");
+            }
+        }
+    } else { // Eyes open
+        eyesClosed = false;
+        notificationSent = false; // Reset notification flag
+        digitalWrite(BUZZER_PIN, LOW); // Ensure buzzer is off
+    }
+
+    delay(100); // Small delay to avoid rapid detection
+}
